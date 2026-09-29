@@ -1,5 +1,5 @@
 """Train XGBoost, track in MLflow, promote only if better (controlled update)."""
-import argparse, hashlib, json, os
+import argparse, datetime, hashlib, json, os
 import joblib, mlflow, pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -39,9 +39,12 @@ with mlflow.start_run(run_name=a.run_name):
     # ---- controlled model update: promote only if ROC-AUC improves ----
     os.makedirs("models", exist_ok=True)
     best = json.load(open(METRICS))["roc_auc"] if os.path.exists(METRICS) else -1
+    imp = sorted(zip(X.columns, model.feature_importances_.tolist()), key=lambda t: -t[1])[:6]
     if m["roc_auc"] > best:
         joblib.dump(model, MODEL)
-        json.dump(m, open(METRICS, "w"), indent=2)
+        meta = dict(m, feature_importance=imp, params=params, data_rows=len(df),
+                    trained_at=datetime.datetime.now().isoformat(timespec="seconds"))
+        json.dump(meta, open(METRICS, "w"), indent=2)
         decision = f"PROMOTED (AUC {m['roc_auc']:.4f} > previous {best:.4f})"
     else:
         decision = f"REJECTED (AUC {m['roc_auc']:.4f} <= current {best:.4f})"

@@ -1,4 +1,4 @@
-import csv, datetime, os
+import csv, datetime, json, os
 from pathlib import Path
 import joblib, pandas as pd
 from fastapi import FastAPI
@@ -14,6 +14,21 @@ LOG = "logs/predictions.csv"
 @app.get("/", response_class=HTMLResponse)
 def home():
     return Path("static/index.html").read_text(encoding="utf-8")
+
+
+@app.get("/metrics")
+def metrics():
+    if not os.path.exists("models/metrics.json"):
+        return {}
+    return json.load(open("models/metrics.json"))
+
+
+@app.get("/recent")
+def recent(n: int = 8):
+    if not os.path.exists(LOG):
+        return []
+    df = pd.read_csv(LOG).tail(n).iloc[::-1]
+    return df.to_dict(orient="records")
 
 
 class Loan(BaseModel):
@@ -40,7 +55,7 @@ def predict(loan: Loan):
     prob = float(model.predict_proba(prepare(pd.DataFrame([row])))[0, 1])
     level, action = (("LOW", "APPROVE") if prob < 0.2 else
                      ("MEDIUM", "MANUAL REVIEW") if prob < 0.5 else ("HIGH", "REJECT"))
-    os.makedirs("logs", exist_ok=True)
+    os.makedirs("logs", exist_ok=True)  # log inputs so Evidently can monitor them
     new = not os.path.exists(LOG)
     with open(LOG, "a", newline="") as f:
         w = csv.writer(f)
